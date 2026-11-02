@@ -1,0 +1,11 @@
+_ > nanoagent.plugin.v0001.ProductConfig:
+tagline: "Grade MCQ exams against the supplied answer key"
+summary: "Grade selected students and questions or the whole MCQ exam, with a verifiable report."
+highlights:
+  - "Individual students, groups or the entire class"
+  - "One question, selected questions or all 20 MCQs"
+  - "Per-question marks and checked totals saved to your workspace"
+steps:
+  - "Choose students and questions, or ask to grade the entire MCQ exam"
+  - "The agent retrieves responses and the authoritative key and awards marks"
+  - "Review student scores and the saved grading report"

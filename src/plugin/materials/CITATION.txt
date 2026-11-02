@@ -1,0 +1,5 @@
+Dataset citation
+
+K P, Dinesh (2026), “A Dataset of Digitized Student Examination Papers, Answer Keys, and Manual Evaluations for Automated Grading Research”, Mendeley Data, V1, doi: 10.17632/sf3kvjwknt.1.
+
+https://doi.org/10.17632/sf3kvjwknt.1
