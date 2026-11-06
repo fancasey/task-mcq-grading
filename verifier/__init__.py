@@ -159,7 +159,11 @@ def verify_task(task, arguments, output, reference, workspace):
             raise ValueError("Pinned report does not match the selected student")
         if number is not None and [mark.question_number for mark in reference.students[0].marks] != [number]:
             raise ValueError("Pinned report does not match the selected question")
-        score, issues = grading_accuracy(reference.students[0], getattr(output, "report", None))
+        try:
+            submitted_report = output.report
+        except AttributeError:
+            submitted_report = None
+        score, issues = grading_accuracy(reference.students[0], submitted_report)
         if issues:
             message = "A perfect grading score is required. Questions to fix: "
             return result(False, message + ", ".join(issues) + ".", score=score)
