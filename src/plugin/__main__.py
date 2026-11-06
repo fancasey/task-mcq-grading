@@ -13,7 +13,8 @@ from mcp.server.stdio import stdio_server
 from slimconfig import build_output, output_schema, plain_output
 
 from contract import TOOLS, Tool
-from plugin import get_answer_key, get_document, get_question, get_response, list_exam, save_report
+from plugin import get_answer_key, get_document, get_question, get_responses, list_exam, save_report
+from plugin.exam import pin_exam_grades, pin_question_grade
 
 server = Server("mcq-grading")
 # NanoAgent names the one folder this plugin may write to.
@@ -23,9 +24,11 @@ IMPLEMENTATIONS = {
     Tool.LIST_EXAM: list_exam,
     Tool.GET_QUESTION: get_question,
     Tool.GET_ANSWER_KEY: get_answer_key,
-    Tool.GET_RESPONSE: get_response,
+    Tool.GET_RESPONSES: get_responses,
     Tool.GET_DOCUMENT: get_document,
     Tool.SAVE_REPORT: save_report,
+    Tool.PIN_EXAM_GRADES: pin_exam_grades,
+    Tool.PIN_QUESTION_GRADE: pin_question_grade,
 }
 
 

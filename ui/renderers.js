@@ -10,12 +10,18 @@ function studentResult(student) {
     ),
   ));
   return disclosure(
-    { summary: `${student.name} (${student.student_id}): ${student.score} / ${student.possible}` },
+    { summary: `${student.name}: ${student.score} / ${student.possible}` },
     h("table", {}, h("thead", {}, header), h("tbody", {}, rows)),
   );
 }
 
 export default {
+  ExamOutput: ({ student_names, question_numbers, documents }) => h("div", {},
+    h("h3", { text: `Students available to grade (${student_names.length})` }),
+    h("ul", {}, student_names.map((name) => h("li", { text: name }))),
+    h("p", { text: `MCQs: ${question_numbers.join(", ")}` }),
+    h("p", { text: `Exam documents: ${documents.join(", ")}` }),
+  ),
   SavedReportOutput: ({ path, report }) => h("div", { class: "grades" },
     h("p", { text: `Saved: ${path}` }),
     h("p", { text: `Total: ${report.total_score} / ${report.total_possible}` }),

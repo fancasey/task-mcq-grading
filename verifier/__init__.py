@@ -4,9 +4,9 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from contract import Task, Tool
+from contract import GradeReport, SelectionInput, Task, Tool
 
-from .data import DOCUMENTS, document, load, question, selection
+from .data import DOCUMENTS, document, load, pinned_grades, question, selected_questions, student_record
 
 
 def result(valid, message):
@@ -14,44 +14,34 @@ def result(valid, message):
 
 
 def expected(value):
-    ids, numbers = selection(value)
     key, roster = load()
-    students = []
-    for sid in ids:
-        name, responses = roster[sid]
-        marks = [
-            {
-                "question_number": q,
-                "response": responses[q],
-                "correct_answer": key[q],
-                "points": int(responses[q] == key[q]),
-            }
-            for q in numbers
-        ]
-        students.append(
-            {
-                "student_id": sid,
-                "name": name,
-                "marks": marks,
-                "score": sum(m["points"] for m in marks),
-                "possible": len(numbers),
-            }
-        )
+    name, responses = student_record(roster, value.student_name)
+    numbers = selected_questions(key, value.question_number)
+    points = pinned_grades(key, roster)[name]
+    marks = [
+        {
+            "question_number": q,
+            "response": responses[q],
+            "correct_answer": key[q],
+            "points": points[q],
+        }
+        for q in numbers
+    ]
+    score = sum(mark["points"] for mark in marks)
     return {
-        "students": students,
-        "total_score": sum(s["score"] for s in students),
-        "total_possible": len(ids) * len(numbers),
+        "students": [{"name": name, "marks": marks, "score": score, "possible": len(numbers)}],
+        "total_score": score,
+        "total_possible": len(numbers),
     }
 
 
-def check_saved(value, output, workspace):
+def check_saved(truth, output, workspace):
     if output.path != "reports/grades.json":
         raise ValueError("Unexpected report path")
     root = Path(workspace).resolve()
     path = (root / output.path).resolve()
     if not path.is_relative_to(root):
         raise ValueError("Report escapes workspace")
-    truth = expected(value)
     if asdict(output.report) != truth:
         raise ValueError("Grades, coverage, ordering or totals differ from source data")
     if json.loads(path.read_text(encoding="utf-8")) != truth:
@@ -61,15 +51,24 @@ def check_saved(value, output, workspace):
 def verify_input(tool, value):
     try:
         tool = Tool(tool)
-        _, students = load()
-        if tool in (Tool.GET_QUESTION, Tool.GET_ANSWER_KEY, Tool.GET_RESPONSE):
+        if tool in (Tool.GET_QUESTION, Tool.GET_ANSWER_KEY):
             question(value.question_number)
-        if tool == Tool.GET_RESPONSE and value.student_id not in students:
-            raise ValueError("Unknown student ID")
         if tool == Tool.GET_DOCUMENT:
             document(value.document)
-        if tool == Tool.SAVE_REPORT:
-            selection(value.selection)
+        if tool in (Tool.GET_RESPONSES, Tool.SAVE_REPORT):
+            key, students = load()
+            selection = value.selection if tool == Tool.SAVE_REPORT else value
+            name, _ = student_record(students, selection.student_name)
+            selected_questions(key, selection.question_number)
+            if tool == Tool.SAVE_REPORT and [student.name for student in value.report.students] != [name]:
+                raise ValueError("The report must contain exactly the selected student")
+        if tool in (Tool.PIN_EXAM_GRADES, Tool.PIN_QUESTION_GRADE):
+            key, students = load()
+            student_record(students, value.student_name)
+            if tool == Tool.PIN_QUESTION_GRADE:
+                if value.question_number is None:
+                    raise ValueError("A question number is required")
+                selected_questions(key, value.question_number)
         return result(True, "Valid input")
     except (ValueError, TypeError, AttributeError, KeyError) as e:
         return result(False, str(e))
@@ -80,15 +79,17 @@ def verify_output(tool, input_value, output_value, workspace):
         tool = Tool(tool)
         if not verify_input(tool, input_value)["valid"]:
             raise ValueError("Invalid input")
-        key, students = load()
         if tool == Tool.SAVE_REPORT:
-            check_saved(input_value.selection, output_value, workspace)
-            if asdict(output_value.report) != asdict(input_value.report):
-                raise ValueError("Tool changed submitted report")
+            check_saved(asdict(input_value.report), output_value, workspace)
+        elif tool in (Tool.PIN_EXAM_GRADES, Tool.PIN_QUESTION_GRADE):
+            selection = SelectionInput(input_value.student_name, None) if tool == Tool.PIN_EXAM_GRADES else input_value
+            if asdict(output_value) != expected(selection):
+                raise ValueError("Reference report differs from source data")
         else:
+            key, students = load()
             if tool == Tool.LIST_EXAM:
                 truth = {
-                    "students": [{"student_id": s, "name": students[s][0]} for s in sorted(students)],
+                    "student_names": sorted(students, key=str.casefold),
                     "question_numbers": sorted(key),
                     "documents": list(DOCUMENTS),
                 }
@@ -105,12 +106,13 @@ def verify_output(tool, input_value, output_value, workspace):
                     "correct_answer": key[input_value.question_number],
                 }
             else:
-                sid, q = input_value.student_id, input_value.question_number
+                name, responses = student_record(students, input_value.student_name)
                 truth = {
-                    "student_id": sid,
-                    "name": students[sid][0],
-                    "question_number": q,
-                    "response": students[sid][1][q],
+                    "name": name,
+                    "responses": [
+                        {"question_number": q, "response": responses[q]}
+                        for q in selected_questions(key, input_value.question_number)
+                    ],
                 }
             if asdict(output_value) != truth:
                 raise ValueError("Output differs from source document")
@@ -121,8 +123,19 @@ def verify_output(tool, input_value, output_value, workspace):
 
 def verify_task(task, arguments, output, reference, workspace):
     try:
-        Task(task)
-        check_saved(arguments, output, workspace)
-        return result(True, "All selected grades and the saved report are correct")
+        task = Task(task)
+        if task == Task.LIST_EXAM:
+            return verify_output(Tool.LIST_EXAM, arguments, output, workspace)
+        number = arguments.question_number if task == Task.GRADE_QUESTION else None
+        if task == Task.GRADE_QUESTION and number is None:
+            raise ValueError("A question number is required")
+        if not isinstance(reference, GradeReport):
+            raise TypeError("A pinned grade report is required")
+        if [student.name for student in reference.students] != [arguments.student_name]:
+            raise ValueError("Pinned report does not match the selected student")
+        if number is not None and [mark.question_number for mark in reference.students[0].marks] != [number]:
+            raise ValueError("Pinned report does not match the selected question")
+        check_saved(asdict(reference), output, workspace)
+        return result(True, "The student's grades and saved report are correct")
     except (ValueError, TypeError, AttributeError, KeyError, OSError) as e:
         return result(False, str(e))

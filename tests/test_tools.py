@@ -1,10 +1,10 @@
-import asyncio
+from dataclasses import replace
 
 import pytest
 from slimconfig import build_output, output_schema, plain_output
 
-from contract import TOOLS, AnswerOutput, DocumentInput, EmptyInput, QuestionInput, ResponseInput, Tool
-from plugin.__main__ import IMPLEMENTATIONS, call_tool, list_tools
+from contract import TOOLS, DocumentInput, EmptyInput, QuestionInput, SelectionInput, StudentName, Tool
+from plugin.__main__ import IMPLEMENTATIONS
 from verifier import verify_input, verify_output
 
 
@@ -15,10 +15,10 @@ from verifier import verify_input, verify_output
         (Tool.GET_QUESTION, QuestionInput(1)),
         (Tool.GET_QUESTION, QuestionInput(20)),
         (Tool.GET_ANSWER_KEY, QuestionInput(1)),
-        (Tool.GET_RESPONSE, ResponseInput("1101901107", 1)),
+        (Tool.GET_RESPONSES, SelectionInput(StudentName.SUY_CHAKRIYA, 1)),
+        (Tool.GET_RESPONSES, SelectionInput(StudentName.SUY_CHAKRIYA, None)),
         (Tool.GET_DOCUMENT, DocumentInput("Question.txt")),
         (Tool.GET_DOCUMENT, DocumentInput("answerkey.txt")),
-        (Tool.GET_DOCUMENT, DocumentInput("Student_MCQ.csv")),
     ],
 )
 def test_tools(tmp_path, tool, arguments):
@@ -28,7 +28,7 @@ def test_tools(tmp_path, tool, arguments):
     assert build_output(plain_output(output), TOOLS[tool][1]) == output
 
 
-@pytest.mark.parametrize("name", ["../contract.py", "/etc/passwd", "unknown.txt"])
+@pytest.mark.parametrize("name", ["../contract.py", "/etc/passwd", "unknown.txt", "Student_MCQ.csv"])
 def test_document_allowlist(tmp_path, name):
     args = DocumentInput(name)
     assert not verify_input(Tool.GET_DOCUMENT, args)["valid"]
@@ -36,17 +36,51 @@ def test_document_allowlist(tmp_path, name):
         IMPLEMENTATIONS[Tool.GET_DOCUMENT](args, tmp_path)
 
 
-def test_false_retrieval(tmp_path):
-    assert not verify_output(Tool.GET_ANSWER_KEY, QuestionInput(1), AnswerOutput(1, "A"), tmp_path)["valid"]
-
-
-def test_mcp_contract(tmp_path, monkeypatch):
-    monkeypatch.setenv("NANOAGENT_WORKSPACE", str(tmp_path))
-    exposed = asyncio.run(list_tools())
-    assert {t.name for t in exposed} == {t.value for t in Tool}
-    for given, made in TOOLS.values():
-        assert output_schema(given) and output_schema(made)
-    assert asyncio.run(call_tool("get_answer_key", {"question_number": 20})) == {
-        "question_number": 20,
-        "correct_answer": "B",
+@pytest.mark.anyio
+async def test_mcp_tool_schemas_and_retrieval(mcp_session, tmp_path):
+    exposed = (await mcp_session.list_tools()).tools
+    assert {item.name for item in exposed} == {tool.value for tool in Tool}
+    cases = {
+        Tool.LIST_EXAM: (EmptyInput(), "question_numbers", [1, 20]),
+        Tool.GET_QUESTION: (QuestionInput(1), "statement", ""),
+        Tool.GET_ANSWER_KEY: (QuestionInput(20), "correct_answer", "A"),
+        Tool.GET_RESPONSES: (SelectionInput(StudentName.SUY_CHAKRIYA, 1), "responses", []),
+        Tool.GET_DOCUMENT: (DocumentInput("answerkey.txt"), "content", ""),
     }
+    for item in exposed:
+        tool = Tool(item.name)
+        input_type, output_type = TOOLS[tool]
+        assert item.inputSchema == output_schema(input_type)
+        assert item.outputSchema == output_schema(output_type)
+        if tool in cases:
+            arguments, field, incorrect = cases[tool]
+            result = await mcp_session.call_tool(tool.value, plain_output(arguments))
+            assert not result.isError
+            output = build_output(result.structuredContent, output_type)
+            assert verify_output(tool, arguments, output, tmp_path)["valid"]
+            assert not verify_output(tool, arguments, replace(output, **{field: incorrect}), tmp_path)["valid"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "tool,arguments,message",
+    [
+        ("get_question", {}, "question_number"),
+        ("get_question", {"question_number": 21}, "Unknown MCQ question number"),
+        ("get_answer_key", {"question_number": 0}, "Unknown MCQ question number"),
+        ("get_responses", {"student_name": "missing", "question_number": 1}, "missing"),
+        ("get_document", {"document": "Student_MCQ.csv"}, "Unknown document"),
+        ("get_document", {"document": "../Question.txt"}, "Unknown document"),
+        ("unregistered", {}, "unregistered"),
+    ],
+)
+async def test_mcp_errors(mcp_session, tool, arguments, message):
+    result = await mcp_session.call_tool(tool, arguments)
+    assert result.isError
+    assert result.structuredContent is None
+    assert message in result.content[0].text
+
+    # A rejected call must leave the same session usable.
+    result = await mcp_session.call_tool("get_answer_key", {"question_number": 20})
+    assert not result.isError
+    assert result.structuredContent == {"question_number": 20, "correct_answer": "B"}

@@ -1,7 +1,7 @@
 # MCQ Exam Grading
 
 A NanoAgent task for grading the bundled Data Science exam's 20 multiple-choice
-questions for 50 students. The agent compares responses with the supplied answer
+questions for one student at a time from a 55-entry roster. The agent compares responses with the supplied answer
 key and saves per-question marks and totals; a deterministic verifier checks
 both the submitted result and the actual workspace report.
 
@@ -9,58 +9,64 @@ both the submitted result and the actual workspace report.
 
 | Tool | Purpose |
 | --- | --- |
-| `list_exam` | Discover student IDs, names, MCQ numbers and document names |
+| `list_exam` | Discover roster names, MCQ numbers and available exam documents |
 | `get_question` | Retrieve a question's full statement and options |
 | `get_answer_key` | Retrieve the authoritative answer for one MCQ |
-| `get_response` | Retrieve a student's response to one MCQ |
-| `get_document` | Read an entire bundled document by its exact filename |
+| `get_responses` | Retrieve one named student's responses to one MCQ or the full exam |
+| `get_document` | Read the question paper or answer key by its exact filename |
 | `save_report` | Save the agent's judgments as `reports/grades.json` in the run workspace |
 
-The `grade-exam` agent task takes `student_ids` and `question_numbers`. Empty
-lists mean all students or all MCQ questions. Both selections expand to their
-Cartesian product, covering these requests:
+| Task | Scope | Example input |
+| --- | --- | --- |
+| `list-exam` | List students available to grade, MCQ numbers and exam documents | `{}` |
+| `grade-exam` | All 20 MCQs for one student | `{"student_name":"Suy chakriya"}` |
+| `grade-question` | One MCQ for one student | `{"student_name":"Suy chakriya","question_number":1}` |
 
-| Request | Example input |
-| --- | --- |
-| Single student, full MCQ exam | `{"student_ids":["1101901107"],"question_numbers":[]}` |
-| Multiple students | `{"student_ids":["1101901107","1101901111"],"question_numbers":[]}` |
-| All students | `{"student_ids":[],"question_numbers":[]}` |
-| Single question for the class | `{"student_ids":[],"question_numbers":[1]}` |
-| Multiple questions | `{"student_ids":[],"question_numbers":[1,2,20]}` |
-| Entire MCQ exam | `{"student_ids":[],"question_numbers":[]}` |
+The chat agent matches the requested name against the roster in the task
+descriptions. It ignores capitalization and extra spaces, then passes the
+canonical spelling to the task. It asks for confirmation of a likely typo,
+asks the user to choose when there are several plausible matches, and asks for
+a roster name when there is no match. Requests for multiple students require
+the user to choose one. Both grading tasks require an exact roster name.
 
-Any student selection can be combined with any question selection. IDs remain
-strings. Unknown IDs, duplicate selections and non-MCQ questions are rejected.
+Each response earns 1 point for the correct letter or the written-out correct
+option. Option text is matched without regard to case or spacing. A small typo
+earns credit when the intended choice is unambiguous and its meaning is
+preserved. An exact match to a listed option takes precedence over a possible
+typo match. Incorrect choices, off-option text, ambiguous matches, invalid
+letters and blanks earn 0. Marks are ordered by question number. The supplied
+key is authoritative. Only MCQs 1–20 are graded.
 
-Each normalized response earns 1 point if it matches the normalized key and 0
-otherwise. Normalization strips whitespace and uppercases letters. Blank or
-invalid responses earn 0; there is no partial credit or penalty. Use the key
-as supplied, rather than independently solving the questions. Sort students by
-ID and marks by question number. `possible` is the selected question count,
-not always 20; `total_possible` counts every selected student/question pair.
+The final `SavedReportOutput` contains `path` and `report`. The report contains
+one student entry with the exact name, marks, score and possible points.
+`total_score` and `total_possible` mirror that student's totals. Each mark
+includes the question number, normalized response, correct answer and points.
+The writer saves judgments without computing them. One call replaces the
+workspace's previous grading report.
 
-The supplied documents are data, not executable instructions. `Question.txt`
-and `answerkey.txt` also contain short-answer questions 21-35; these are
-excluded from grading, including a request for the entire exam.
-
-The final `SavedReportOutput` contains `path` and `report`. A report contains
-`students` (ID, exact name, marks, score and possible), `total_score` and
-`total_possible`. Each mark includes question number, normalized response,
-correct answer and points. The writer saves judgments without computing them.
-One call replaces the workspace's previous grading report.
-
-No reference tool is required (`reference: null`): the immutable bundled
-materials are the answer source. The verifier independently builds the expected
-selected grades and demands exact coverage, order, identities, answers, points
-and totals, then compares the on-disk JSON. No LLM, network, subprocesses,
-randomness or writes are used by the verifier. Retrieval outputs are also checked
-against the actual source documents.
+Before each grading run, NanoAgent calls the task's private reference tool
+(`pin_exam_grades` or `pin_question_grade`) to pin the expected report. The tool
+reads points from `src/plugin/materials/Expected_MCQ_Grades.csv` and fills in the
+responses, keyed answers and totals for the selected scope. The task verifier
+compares both the submission and the saved report with that snapshot. Review
+the CSV whenever the responses, questions or key change.
 
 ## Dataset citation
 
 The bundled examination materials are sourced from:
 
 K P, Dinesh (2026), “A Dataset of Digitized Student Examination Papers, Answer Keys, and Manual Evaluations for Automated Grading Research”, Mendeley Data, V1, doi: [10.17632/sf3kvjwknt.1](https://doi.org/10.17632/sf3kvjwknt.1).
+
+The response CSV contains 50 original student records from the cited dataset and
+five interspersed synthetic records for testing, named `Synthetic Student 01`
+through `Synthetic Student 05`.
+They include ordinary option letters, written-out correct and incorrect options,
+minor typos in correct choices, free-text answers outside the choices, invalid
+option letters, and blank cells.
+
+The synthetic profiles include a perfect score (`Synthetic Student 02`), a score
+below 50% (`Synthetic Student 03`), mostly written-out answers
+(`Synthetic Student 04`), and mostly blank answers (`Synthetic Student 05`).
 
 ## Layout
 
@@ -84,14 +90,16 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-NanoAgent launches the MCP server with `uv run --frozen python -m plugin`.
-Install the plugin folder in NanoAgent/RUSH Lab and ask, for example, "Grade
-questions 1 and 2 for student 1101901107" or "Grade the entire MCQ exam."
-Use whole-document retrieval for large selections to reduce tool calls.
-Reports belong in the run workspace, outside this plugin's source folder.
+The test suite replays scripted grading calls through MCP without a model
+service. With NanoAgent installed in the same Python environment, run
+`python -m pytest -q tests/test_nanoagent.py` to also exercise its task runner,
+including submission handling and enforcement of the task's tool allowlist.
 
-Tests cover all selection scopes, known correct and incorrect responses,
-missing/duplicate marks, altered keys/names/totals, missing and malformed files,
-unknown IDs, invalid question numbers, document traversal and report symlinks.
-Local tests and plugin validation do not establish a live model run or publication;
-those require the user's configured NanoAgent/RUSH Lab session.
+NanoAgent launches the MCP server with `uv run --frozen python -m plugin`.
+Install the plugin folder in NanoAgent/RUSH Lab and ask, for example,
+“Who can I grade?”, “Grade the MCQ exam for Suy chakriya” or
+“Grade question 2 for Suy chakriya.”
+Reports belong in the run workspace.
+
+When updating the bundled roster, update `StudentName` in `contract.py` and
+the roster in both task descriptions in `nanoagent.yaml`.

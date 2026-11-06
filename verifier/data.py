@@ -4,7 +4,9 @@ import re
 from pathlib import Path
 
 MATERIALS = Path(__file__).resolve().parents[1] / "src" / "plugin" / "materials"
-DOCUMENTS = ("Question.txt", "answerkey.txt", "Student_MCQ.csv")
+DOCUMENTS = ("Question.txt", "answerkey.txt")
+RESPONSES_FILE = "Student_MCQ.csv"
+GRADES_FILE = "Expected_MCQ_Grades.csv"
 
 
 def document(name):
@@ -44,12 +46,21 @@ def csv_rows(text):
 
 def load():
     key = {int(r[0]): r[2].strip().upper() for r in csv_rows(document("answerkey.txt"))[1:] if r[1] == "MCQ"}
-    rows = csv_rows(document("Student_MCQ.csv"))
+    rows = csv_rows((MATERIALS / RESPONSES_FILE).read_text(encoding="utf-8"))
+    questions = sorted(key)
+    if not rows or rows[0] != ["student_name", *map(str, questions)]:
+        raise ValueError("Responses must cover the exam questions in order")
     students = {}
+    normalized_names = set()
     for row in rows[1:]:
-        if len(row) != len(rows[0]) or row[0] in students:
-            raise ValueError("Malformed or duplicate student row")
-        students[row[0]] = (row[1], dict(zip(map(int, rows[0][2:]), (s.strip().upper() for s in row[2:]))))
+        if len(row) != len(rows[0]) or not row[0].strip():
+            raise ValueError("Malformed student response row")
+        name, *responses = row
+        normalized = " ".join(name.casefold().split())
+        if normalized in normalized_names:
+            raise ValueError(f"Duplicate student name in the roster: {name!r}")
+        normalized_names.add(normalized)
+        students[name] = dict(zip(questions, (response.strip().upper() for response in responses)))
     return key, students
 
 
@@ -62,14 +73,32 @@ def question(number):
     return sections[number]
 
 
-def selection(value):
-    key, students = load()
-    if any(type(s) is not str or s not in students for s in value.student_ids):
-        raise ValueError("Unknown student ID; use list_exam")
-    if any(type(q) is not int or q not in key for q in value.question_numbers):
+def pinned_grades(key, students):
+    rows = csv_rows((MATERIALS / GRADES_FILE).read_text(encoding="utf-8"))
+    questions = sorted(key)
+    if not rows or rows[0] != ["student_name", *map(str, questions)]:
+        raise ValueError("Pinned grades must cover the exam questions in order")
+    grades = {}
+    for row in rows[1:]:
+        name, *points = row
+        if name in grades or len(points) != len(questions) or any(p not in ("0", "1") for p in points):
+            raise ValueError("Malformed or duplicate pinned grade row")
+        grades[name] = dict(zip(questions, map(int, points)))
+    if grades.keys() != students.keys():
+        raise ValueError("Pinned grades must cover the response roster")
+    return grades
+
+
+def student_record(students, name):
+    if name not in students:
+        raise ValueError("Unknown student name. Choose an exact roster name from list_exam.")
+    # Slicing converts a string-backed task enum to its plain string value.
+    return name[:], students[name]
+
+
+def selected_questions(key, number):
+    if number is None:
+        return sorted(key)
+    if type(number) is not int or number not in key:
         raise ValueError("Unknown MCQ question number")
-    if len(set(value.student_ids)) != len(value.student_ids) or len(set(value.question_numbers)) != len(
-        value.question_numbers
-    ):
-        raise ValueError("Selections must be distinct")
-    return sorted(value.student_ids or students), sorted(value.question_numbers or key)
+    return [number]
