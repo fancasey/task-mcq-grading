@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: mcq-grading
 name: MCQ Exam Grading
-version: 0.2.2
+version: 0.2.3
 status: ready
 spec: nanoagent.plugin/v0001
 
