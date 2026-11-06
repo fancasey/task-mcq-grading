@@ -9,8 +9,8 @@ from contract import GradeReport, SelectionInput, Task, Tool
 from .data import DOCUMENTS, document, load, pinned_grades, question, selected_questions, student_record
 
 
-def result(valid, message):
-    return {"valid": valid, "score": float(valid), "message": message, "details": {}}
+def result(valid, message, *, score=None):
+    return {"valid": valid, "score": float(valid) if score is None else score, "message": message, "details": {}}
 
 
 def expected(value):
@@ -121,7 +121,31 @@ def verify_output(tool, input_value, output_value, workspace):
         return result(False, str(e))
 
 
+def grading_accuracy(reference_student, submitted_report):
+    expected_marks = reference_student.marks
+    if not expected_marks:
+        raise ValueError("Pinned report contains no grades")
+    students = submitted_report.students if submitted_report is not None else []
+    submitted_points = {}
+    if [student.name for student in students] == [reference_student.name]:
+        for mark in students[0].marks:
+            submitted_points.setdefault(mark.question_number, []).append(mark.points)
+
+    issues = []
+    for mark in expected_marks:
+        points = submitted_points.get(mark.question_number, [])
+        if not points:
+            issues.append(f"Q{mark.question_number} (missing mark)")
+        elif len(points) > 1:
+            issues.append(f"Q{mark.question_number} (duplicate marks)")
+        elif points[0] != mark.points:
+            issues.append(f"Q{mark.question_number} (awarded {points[0]}, expected {mark.points})")
+    correct = len(expected_marks) - len(issues)
+    return correct / len(expected_marks), issues
+
+
 def verify_task(task, arguments, output, reference, workspace):
+    score = 0.0
     try:
         task = Task(task)
         if task == Task.LIST_EXAM:
@@ -135,7 +159,11 @@ def verify_task(task, arguments, output, reference, workspace):
             raise ValueError("Pinned report does not match the selected student")
         if number is not None and [mark.question_number for mark in reference.students[0].marks] != [number]:
             raise ValueError("Pinned report does not match the selected question")
+        score, issues = grading_accuracy(reference.students[0], getattr(output, "report", None))
+        if issues:
+            message = "A perfect grading score is required. Questions to fix: "
+            return result(False, message + ", ".join(issues) + ".", score=score)
         check_saved(asdict(reference), output, workspace)
-        return result(True, "The student's grades and saved report are correct")
+        return result(True, "The student's grades and saved report are correct", score=score)
     except (ValueError, TypeError, AttributeError, KeyError, OSError) as e:
-        return result(False, str(e))
+        return result(False, str(e), score=score)

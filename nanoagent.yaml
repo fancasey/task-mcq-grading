@@ -1,7 +1,7 @@
 _ > nanoagent.plugin.v0001.ManifestConfig:
 id: mcq-grading
 name: MCQ Exam Grading
-version: 0.2.3
+version: 0.2.4
 status: ready
 spec: nanoagent.plugin/v0001
 
@@ -42,29 +42,7 @@ tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
     reference: null
     instructions: Return the exact roster names and available exam materials from list_exam.
   grade-exam:
-    description: >-
-      Grade all 20 MCQs for one student by full name.
-      Use this task when the user requests the full MCQ exam.
-      Match the user's name to the roster below, ignoring capitalization and extra spaces.
-      If a partial name or possible misspelling matches several students, ask which
-      student the user means, list the matching full roster names, and wait for a
-      choice before calling any grading task. For example, “synthetic student”
-      matches Synthetic Student 01 through Synthetic Student 05. List all five names
-      and wait for the user to pick one.
-      If there is one likely typo match, ask “Did you mean [roster name]?” and wait
-      for confirmation. If no name matches, ask for a full roster name. If the request
-      names multiple students or asks for the class, ask the user to choose one student
-      and wait. Once one student is identified, use the exact roster spelling as student_name.
-      Roster names are
-      Chav Bunna, Chea Chanraksmeg, Chea Chansineath, chhiv Bunchhean, chhour Thabai, Chy Kimtony, Defh
-      Sret leak, Doung RatanakSam bat, E Sokmean, Hak Vinchet, Heng Kevin, Hny DaraPichchan, Kao
-      Kanhchana, Kong Sovankiry, Kreen Rathana, Kung Leakhana, Lay Chivaan Vinlo, Lay Sophann, Lim
-      Huameng, Ly Kimlong, Ly Sreypov, Narin Colin, Ney Senrith, NOL Mono, NySopheaktra, Ong Sophin, Ou
-      Dauid, Pak Maneth, phalla Borormey, PHEAK CHANCHIVY, Reasey Serei Noaty, Reth Sakmeta, Sak Lysem,
-      Sambath Vatana, San Thornen, Seab Navin, Seng Sophal, Sor Panha Rith, Soth Sambath, Sroenn
-      Daungchan, Suy chakriya, Synthetic Student 01, Synthetic Student 02, Synthetic Student 03,
-      Synthetic Student 04, Synthetic Student 05, Tak Vannak, Tharn Laysim, Thorn Theanlay, Thy Saonan, Ung Keng long, Vean
-      Sovanvathana, Ven Channa, Yeak Yeanmao, Yin Chantha.
+    description: Grade all 20 MCQs for one student
     runner: agent
     tools: [get_responses, get_document, save_report]
     reference: pin_exam_grades
@@ -76,29 +54,7 @@ tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
       Put exactly one entry in students with the roster name, marks, score (the sum of points) and possible (the number of graded questions). Set total_score and total_possible to that student's score and possible.
       Call save_report with the selection and report. The writer saves your judgments. Submit the SavedReportOutput exactly as returned.
   grade-question:
-    description: >-
-      Grade one MCQ (1–20) for one student by full name.
-      Ask which MCQ to grade if the user requests question grading without choosing one question.
-      Match the user's name to the roster below, ignoring capitalization and extra spaces.
-      If a partial name or possible misspelling matches several students, ask which
-      student the user means, list the matching full roster names, and wait for a
-      choice before calling any grading task. For example, “synthetic student”
-      matches Synthetic Student 01 through Synthetic Student 05. List all five names
-      and wait for the user to pick one.
-      If there is one likely typo match, ask “Did you mean [roster name]?” and wait
-      for confirmation. If no name matches, ask for a full roster name. If the request
-      names multiple students or asks for the class, ask the user to choose one student
-      and wait. Once one student is identified, use the exact roster spelling as student_name.
-      Roster names are
-      Chav Bunna, Chea Chanraksmeg, Chea Chansineath, chhiv Bunchhean, chhour Thabai, Chy Kimtony, Defh
-      Sret leak, Doung RatanakSam bat, E Sokmean, Hak Vinchet, Heng Kevin, Hny DaraPichchan, Kao
-      Kanhchana, Kong Sovankiry, Kreen Rathana, Kung Leakhana, Lay Chivaan Vinlo, Lay Sophann, Lim
-      Huameng, Ly Kimlong, Ly Sreypov, Narin Colin, Ney Senrith, NOL Mono, NySopheaktra, Ong Sophin, Ou
-      Dauid, Pak Maneth, phalla Borormey, PHEAK CHANCHIVY, Reasey Serei Noaty, Reth Sakmeta, Sak Lysem,
-      Sambath Vatana, San Thornen, Seab Navin, Seng Sophal, Sor Panha Rith, Soth Sambath, Sroenn
-      Daungchan, Suy chakriya, Synthetic Student 01, Synthetic Student 02, Synthetic Student 03,
-      Synthetic Student 04, Synthetic Student 05, Tak Vannak, Tharn Laysim, Thorn Theanlay, Thy Saonan, Ung Keng long, Vean
-      Sovanvathana, Ven Channa, Yeak Yeanmao, Yin Chantha.
+    description: Grade one MCQ for one student
     runner: agent
     tools: [get_responses, get_answer_key, get_question, save_report]
     reference: pin_question_grade

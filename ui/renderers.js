@@ -1,17 +1,23 @@
-import { disclosure, h } from "./kit/components.js";
+import { disclosure, h, icon } from "./kit/components.js";
 
 function studentResult(student) {
   const header = h("tr", {}, ["Question", "Response", "Key", "Points"].map(
-    (text) => h("th", { text }),
+    (text) => h("th", { scope: "col", text }),
   ));
   const rows = student.marks.map((mark) => h("tr", {},
     [mark.question_number, mark.response || "Blank", mark.correct_answer, mark.points].map(
       (text) => h("td", { text: String(text) }),
     ),
   ));
-  return disclosure(
-    { summary: `${student.name}: ${student.score} / ${student.possible}` },
-    h("table", {}, h("thead", {}, header), h("tbody", {}, rows)),
+  return h("div", { class: "grade-student" },
+    h("div", { class: "grade-summary" },
+      h("h4", { text: student.name }),
+      h("p", { class: "grade-score", text: `${student.score} / ${student.possible}` }),
+    ),
+    disclosure(
+      { summary: "Per-question marks" },
+      h("table", {}, h("thead", {}, header), h("tbody", {}, rows)),
+    ),
   );
 }
 
@@ -23,8 +29,10 @@ export default {
     h("p", { text: `Exam documents: ${documents.join(", ")}` }),
   ),
   SavedReportOutput: ({ path, report }) => h("div", { class: "grades" },
-    h("p", { text: `Saved: ${path}` }),
-    h("p", { text: `Total: ${report.total_score} / ${report.total_possible}` }),
     report.students.map(studentResult),
+    report.students.length !== 1
+      ? h("p", { text: `Total: ${report.total_score} / ${report.total_possible}` })
+      : null,
+    h("p", { class: "grade-path" }, icon("file", { size: 16 }), "Saved to ", h("code", { text: path })),
   ),
 };

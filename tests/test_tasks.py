@@ -131,14 +131,14 @@ async def test_scripted_grading_task(replay_task, tmp_path, task, number, key_to
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "scenario,reason",
+    "scenario,reason,accuracy",
     [
-        ("skipped-save", "No such file"),
-        ("wrong-grades", "Grades, coverage, ordering or totals differ"),
-        ("saved-different-report", "Saved report differs"),
+        ("skipped-save", "No such file", 1.0),
+        ("wrong-grades", "Q20 (awarded 1, expected 0)", 0.0),
+        ("saved-different-report", "Saved report differs", 1.0),
     ],
 )
-async def test_scripted_grading_rejects_invalid_outcomes(replay_task, tmp_path, scenario, reason):
+async def test_scripted_grading_rejects_invalid_outcomes(replay_task, tmp_path, scenario, reason, accuracy):
     selection = {"student_name": STUDENT, "question_number": 20}
     report = report_for(QUESTION_MARKS, 0)
     wrong_marks = deepcopy(QUESTION_MARKS)
@@ -154,7 +154,7 @@ async def test_scripted_grading_rejects_invalid_outcomes(replay_task, tmp_path, 
     verdict = await replay_task(Task.GRADE_QUESTION, selection, fixed_script(calls, submission))
 
     assert verdict["valid"] is False
-    assert verdict["score"] == 0.0
+    assert verdict["score"] == accuracy
     assert reason in verdict["message"]
     if scenario != "skipped-save":
         assert json.loads((tmp_path / REPORT_PATH).read_text(encoding="utf-8")) == wrong_report

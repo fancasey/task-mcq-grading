@@ -113,12 +113,20 @@ class AnswerOutput(Output):
 
 @dataclass
 class GradeExamInput(Output):
-    student_name: Annotated[StudentName, "The exact roster name of the one student to grade"]
+    student_name: Annotated[
+        StudentName,
+        "Use the exact name from the allowed roster values for one student. Match names ignoring capitalization "
+        "and extra spaces. If a partial name or possible typo matches several students, list the matching full "
+        "names and wait for the user to choose. For example, 'synthetic student' matches Synthetic Student 01 "
+        "through Synthetic Student 05. Confirm a single likely typo before grading. If no name matches, ask "
+        "for a full roster name. For multiple students or the whole class, ask the user to choose one student "
+        "and wait before calling a grading task.",
+    ]
 
 
 @dataclass
 class GradeQuestionInput(GradeExamInput):
-    question_number: Annotated[int, "The MCQ number, from 1 to 20"]
+    question_number: Annotated[int, "The MCQ number, from 1 to 20. Ask if the user has not specified one question."]
 
 
 @dataclass

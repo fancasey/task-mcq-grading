@@ -22,8 +22,8 @@ both the submitted result and the actual workspace report.
 | `grade-exam` | All 20 MCQs for one student | `{"student_name":"Suy chakriya"}` |
 | `grade-question` | One MCQ for one student | `{"student_name":"Suy chakriya","question_number":1}` |
 
-The chat agent matches the requested name against the roster in the task
-descriptions. It ignores capitalization and extra spaces, then passes the
+The chat agent matches the requested name against the roster in the grading
+tasks' student input. It ignores capitalization and extra spaces, then passes the
 canonical spelling to the task. It asks for confirmation of a likely typo,
 asks the user to choose when there are several plausible matches, and asks for
 a roster name when there is no match. Requests for multiple students require
@@ -50,6 +50,13 @@ reads points from `src/plugin/materials/Expected_MCQ_Grades.csv` and fills in th
 responses, keyed answers and totals for the selected scope. The task verifier
 compares both the submission and the saved report with that snapshot. Review
 the CSV whenever the responses, questions or key change.
+
+The verification score is the fraction of requested questions for which the
+submission gives the selected student exactly one mark with the expected points.
+Missing and duplicate marks earn zero credit for that question. The verifier
+rejects any score below 100% and lists the questions that lost credit. Passing
+also requires an exact match in both reports, including responses, answer keys,
+ordering and totals.
 
 ## Dataset citation
 
@@ -101,5 +108,4 @@ Install the plugin folder in NanoAgent/RUSH Lab and ask, for example,
 “Grade question 2 for Suy chakriya.”
 Reports belong in the run workspace.
 
-When updating the bundled roster, update `StudentName` in `contract.py` and
-the roster in both task descriptions in `nanoagent.yaml`.
+When updating the bundled roster, update `StudentName` in `contract.py`.

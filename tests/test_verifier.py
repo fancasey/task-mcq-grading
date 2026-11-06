@@ -1,9 +1,7 @@
 import copy
-from pathlib import Path
 
 import pytest
 from slimconfig import build_output, output_schema
-from yaml import safe_load
 
 from contract import (
     TASKS,
@@ -84,15 +82,26 @@ def test_task_scope_must_match_report(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "mutation", ["points", "response", "key", "name", "missing", "duplicate", "order", "score", "total"]
+    "mutation,accuracy",
+    [
+        ("points", 19 / 20),
+        ("response", 1.0),
+        ("key", 1.0),
+        ("name", 0.0),
+        ("missing", 19 / 20),
+        ("duplicate", 19 / 20),
+        ("order", 1.0),
+        ("score", 1.0),
+        ("total", 1.0),
+    ],
 )
-def test_tampered_grades(tmp_path, mutation):
+def test_tampered_grades(tmp_path, mutation, accuracy):
     selection = SelectionInput(STUDENT, None)
     output = saved(tmp_path, selection)
     reference = copy.deepcopy(output.report)
     student = output.report.students[0]
     if mutation == "points":
-        student.marks[0].points = 1
+        student.marks[0].points = 1 - student.marks[0].points
     elif mutation == "response":
         student.marks[0].response = "B"
     elif mutation == "key":
@@ -110,7 +119,14 @@ def test_tampered_grades(tmp_path, mutation):
     else:
         output.report.total_possible += 1
     verdict = verify_task(Task.GRADE_EXAM, GradeExamInput(STUDENT), output, reference, tmp_path)
-    assert verdict["valid"] is False and verdict["score"] == 0.0
+    assert verdict["valid"] is False
+    assert verdict["score"] == accuracy
+    if mutation == "missing":
+        assert "Q20 (missing mark)" in verdict["message"]
+    elif mutation == "duplicate":
+        assert "Q1 (duplicate marks)" in verdict["message"]
+    elif mutation == "name":
+        assert all(f"Q{mark.question_number} (missing mark)" in verdict["message"] for mark in student.marks)
 
 
 @pytest.mark.parametrize("content", [None, "{invalid", "{}", "[]", "null"])
@@ -167,19 +183,13 @@ def test_duplicate_roster_name_is_reported(tmp_path, monkeypatch):
         load()
 
 
-def test_task_descriptions_and_schemas_cover_roster():
+def test_grading_task_schemas_cover_roster():
     _, roster = load()
     names = sorted(roster)
-    manifest = Path(__file__).resolve().parents[1] / "nanoagent.yaml"
-    tasks = safe_load(manifest.read_text(encoding="utf-8"))[
-        "tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]"
-    ]
     for task in (Task.GRADE_EXAM, Task.GRADE_QUESTION):
         given, _ = TASKS[task]
         allowed_names = output_schema(given)["properties"]["student_name"]["enum"]
-        description = tasks[task.value]["description"]
-        described_names = description.split("Roster names are ", 1)[1].removesuffix(".").split(", ")
-        assert sorted(allowed_names) == sorted(described_names) == names
+        assert sorted(allowed_names) == names
 
 
 @pytest.mark.parametrize("task", [Task.GRADE_EXAM, Task.GRADE_QUESTION])
